@@ -66,6 +66,7 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
         //判断是否是关闭websocket的指令
         if (frame instanceof CloseWebSocketFrame) {
             handshaker.close(ctx.channel(), (CloseWebSocketFrame)frame.retain());
+            return;
         }
         //判断是否是ping消息
         if (frame instanceof PingWebSocketFrame) {
@@ -82,22 +83,25 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
             }
             return;
         }
+
         //返回应答消息:获取客户端向服务端发送的消息并群发出去
         String reqMsg = ((TextWebSocketFrame) frame).text();
         System.out.println ("服务端收到客户端的消息====>>>" + reqMsg);
         ClientMsg clientMsg = (ClientMsg) JSONObject.toBean ( JSONObject.fromObject ( reqMsg ), ClientMsg.class );
 
-        //如果是验证信息，则将相应ChannelId与用户Id存储起来
-        if(clientMsg.getReceiver ().equals ( "server" ) && clientMsg.getMessage ().equals ( "server" )){
-
+        //如果是验证信息
+        if(clientMsg.getReceiver ().equals ( "server" )){
+            if(clientMsg.getMessage ().equals ( "open" )){//如果是连接请求，则将相应ChannelId与用户Id存储起来
+                System.out.println ("===连接===");
+            }else if(clientMsg.getMessage ().equals ( "close" )){//如果是连接请求，则将相应ChannelId与用户Id删除
+                System.out.println ("===断开===");
+            }
         }else{
         //如果是用户之间的信息，则把信息发送给相应用户
             //1.如果发送的对象处于离线
 
 
-
             //2.如果发送对象处于在线
-
 
 
             TextWebSocketFrame tws = new TextWebSocketFrame(new Date ().toString() + " >=>=> " + clientMsg.getMessage ());

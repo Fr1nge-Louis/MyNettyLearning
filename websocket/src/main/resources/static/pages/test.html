@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>主页面</title>
+    <script src="/static/jQuery/jquery-3.2.1.min.js"></script>
+</head>
+<body>
+<div>
+    <input id="msg" type = "text" value = ""/>
+    <button onclick="send()">发送</button>
+    <button onclick="wsConnect()">连接</button>
+    <button onclick="wsDisconnect()">断开</button>
+</div>
+<div>
+    <textarea id = "responseContent" style = "width:1024px; height:300px"></textarea>
+</div>
+
+</body>
+<script>
+    var socket;
+    if(!window.WebSocket){
+        window.WebSocket = window.MozWebSocket;
+    }
+    //连接
+    function wsConnect() {
+        if(window.WebSocket){
+            socket = new WebSocket("ws://localhost:8888/websocket");
+
+            socket.onopen = function(){
+                var ta = document.getElementById('responseContent');
+                ta.value = "你当前的浏览器支持WebSocket\r\n";
+                var json = {"sender":"test001","receiver":"server","time":new Date().getTime(),"message":"open"};
+                var jsonStr = JSON.stringify(json);
+                console.log(jsonStr);
+                socket.send(jsonStr);
+            };
+
+            socket.onmessage = function(msg){
+                var val = $('#responseContent').val();
+                $('#responseContent').val(val + msg.data + "\r\n");
+            };
+
+            socket.onclose = function(){
+                var ta = document.getElementById('responseContent');
+                ta.value = "连接已经关闭\r\n";
+            };
+
+            socket.onerror = function (ev) {
+                console.log(ev.toString());
+            }
+        }else{
+            alert("您的浏览器不支持WebSocket");
+        }
+    }
+
+    //发送
+    function send() {
+        var message = $('#msg').val();
+        var time = new Date().getTime();
+        if(!window.WebSocket){
+            return;
+        }
+        if(socket.readyState == WebSocket.OPEN){
+            var json = {"sender":"test001","receiver":"test002","time":time,"message":message};
+            var jsonStr = JSON.stringify(json);
+            console.log(jsonStr);
+            socket.send(jsonStr);
+        }else{
+            alert("WebSocket连接没有建立成功！！");
+        }
+        $('#msg').val("");
+    }
+
+    //断开
+    function wsDisconnect() {
+        var json = {"sender":"test001","receiver":"server","time":new Date().getTime(),"message":"close"};
+        var jsonStr = JSON.stringify(json);
+        console.log(jsonStr);
+        socket.send(jsonStr);
+        socket.close();
+    }
+</script>
+</html>

@@ -39,6 +39,9 @@
 
         socket.onclose = function(){
             var ta = document.getElementById('responseContent');
+
+
+
             ta.value = "连接已经关闭\r\n";
         };
     }else{
@@ -61,6 +64,5 @@
         }
         $('#msg').val("");
     }
-
 </script>
 </html>

@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public class LoginController {
     @RequestMapping("/page")
     public String test(){
-        return "../static/pages/home";
+        return "../static/pages/test";
     }
-
 }
