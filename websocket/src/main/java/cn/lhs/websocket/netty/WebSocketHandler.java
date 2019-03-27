@@ -1,40 +1,49 @@
 package cn.lhs.websocket.netty;
 
+import cn.lhs.websocket.entity.ChannelMsg;
 import cn.lhs.websocket.entity.ClientMsg;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.util.JSONPObject;
+import cn.lhs.websocket.redis.RedisForMsg;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.websocketx.*;
 import io.netty.util.CharsetUtil;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import net.sf.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Date;
 
 public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
+    @Value("${websocket.url}")
+    private String WEB_SOCKET_URL; //= "ws://localhost:8888/websocket";
 
-    private WebSocketServerHandshaker handshaker;
-    private static final String WEB_SOCKET_URL = "ws://localhost:8888/websocket";
+    private WebSocketServerHandshaker handShaker;
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketHandler.class);
+    private static final ChannelGroup channels = new DefaultChannelGroup( GlobalEventExecutor.INSTANCE);
+
 
 
     //客户端与服务端创建连接的时候调用
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         NettyConfig.group.add(ctx.channel());
-        System.out.println ("客户端与服务端连接开启...");
+        logger.info ("客户端与服务端连接开启...");
     }
 
     //客户端与服务端断开连接的时候调用
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         NettyConfig.group.remove(ctx.channel());
-        System.out.println ("客户端与服务端连接关闭...");
+        logger.info ("客户端与服务端连接关闭...");
     }
 
     //服务端接收客户端发送过来的数据结束之后调用
@@ -65,7 +74,7 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
     private void handWebsocketFrame(ChannelHandlerContext ctx, WebSocketFrame frame){
         //判断是否是关闭websocket的指令
         if (frame instanceof CloseWebSocketFrame) {
-            handshaker.close(ctx.channel(), (CloseWebSocketFrame)frame.retain());
+            handShaker.close(ctx.channel(), (CloseWebSocketFrame)frame.retain());
             return;
         }
         //判断是否是ping消息
@@ -84,31 +93,51 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
             return;
         }
 
-        //返回应答消息:获取客户端向服务端发送的消息并群发出去
+        //返回应答消息:获取客户端向服务端发送的消息并发出去
         String reqMsg = ((TextWebSocketFrame) frame).text();
-        System.out.println ("服务端收到客户端的消息====>>>" + reqMsg);
+        logger.info ("服务端收到客户端的消息====>>>" + reqMsg);
         ClientMsg clientMsg = (ClientMsg) JSONObject.toBean ( JSONObject.fromObject ( reqMsg ), ClientMsg.class );
 
+        RedisForMsg redis = new RedisForMsg("localhost",6379,"123456");
         //如果是验证信息
         if(clientMsg.getReceiver ().equals ( "server" )){
             if(clientMsg.getMessage ().equals ( "open" )){//如果是连接请求，则将相应ChannelId与用户Id存储起来
-                System.out.println ("===连接===");
+                logger.info (clientMsg.getSender()+"连接成功，channelId="+ctx.channel().id());
+                ChannelMsg channelMsg = new ChannelMsg();
+                channelMsg.setUserId(clientMsg.getSender());
+                channelMsg.setChannelId(ctx.channel().id());
+                channelMsg.setTime(new Date().getTime());
+                redis.saveChannelMsg(channelMsg);
             }else if(clientMsg.getMessage ().equals ( "close" )){//如果是连接请求，则将相应ChannelId与用户Id删除
-                System.out.println ("===断开===");
+                logger.info (clientMsg.getSender()+"断开======");
+                ChannelMsg channelMsg = new ChannelMsg();
+                channelMsg.setUserId(clientMsg.getSender());
+                channelMsg.setChannelId(null);
+                channelMsg.setTime(new Date().getTime());
+                redis.saveChannelMsg(channelMsg);
             }
         }else{
         //如果是用户之间的信息，则把信息发送给相应用户
+
+            //获取接收者的channel
+            ChannelId channelId = redis.getChannelId(clientMsg.getReceiver());
+            logger.info("接收者channel="+channelId+",发送者channel="+ctx.channel().id());
+
             //1.如果发送的对象处于离线
-
-
+            if(channelId == null || NettyConfig.group.find(channelId) == null){
+                TextWebSocketFrame tws = new TextWebSocketFrame("接收者处于离线状态");
+                //发送给指定的人
+                ctx.channel().writeAndFlush(tws);
+            }
             //2.如果发送对象处于在线
-
-
-            TextWebSocketFrame tws = new TextWebSocketFrame(new Date ().toString() + " >=>=> " + clientMsg.getMessage ());
-
-
-            //群发，服务端向每个连接上来的客户端群发消息
-            NettyConfig.group.writeAndFlush(tws);
+            else {
+                TextWebSocketFrame tws = new TextWebSocketFrame(clientMsg.getSender()+"在"+new Date ().toString() + "说 >=>=> " + clientMsg.getMessage ());
+                //发送给指定的人
+                channels.add(ctx.channel());
+                channels.add(NettyConfig.group.find(channelId));
+                channels.writeAndFlush(tws);
+                channels.clear();
+            }
         }
 
 
@@ -124,11 +153,11 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
             return;
         }
         WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(WEB_SOCKET_URL, null, false);
-        handshaker = wsFactory.newHandshaker(req);
-        if (handshaker == null) {
+        handShaker = wsFactory.newHandshaker(req);
+        if (handShaker == null) {
             WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse ( ctx.channel() );
         }else{
-            handshaker.handshake(ctx.channel(), req);
+            handShaker.handshake(ctx.channel(), req);
         }
     }
     //服务端向客户端响应消息
