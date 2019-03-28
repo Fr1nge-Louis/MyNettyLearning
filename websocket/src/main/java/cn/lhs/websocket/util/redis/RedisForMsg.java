@@ -1,4 +1,4 @@
-package cn.lhs.websocket.redis;
+package cn.lhs.websocket.util.redis;
 
 import cn.lhs.websocket.entity.ChannelMsg;
 import cn.lhs.websocket.entity.ClientMsg;
@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
-import redis.clients.jedis.Pipeline;
 
 import java.util.List;
 

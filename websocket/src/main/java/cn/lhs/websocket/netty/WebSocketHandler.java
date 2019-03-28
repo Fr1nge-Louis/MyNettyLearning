@@ -2,7 +2,7 @@ package cn.lhs.websocket.netty;
 
 import cn.lhs.websocket.entity.ChannelMsg;
 import cn.lhs.websocket.entity.ClientMsg;
-import cn.lhs.websocket.redis.RedisForMsg;
+import cn.lhs.websocket.util.redis.RedisForMsg;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
@@ -18,18 +18,16 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 import net.sf.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Date;
 
 public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
-    @Value("${websocket.url}")
-    private String WEB_SOCKET_URL; //= "ws://localhost:8888/websocket";
+    private String WEB_SOCKET_URL = "ws://localhost:8888/websocket";
+    private RedisForMsg redis = new RedisForMsg("localhost",6379,"123456");
 
     private WebSocketServerHandshaker handShaker;
     private static final Logger logger = LoggerFactory.getLogger(WebSocketHandler.class);
     private static final ChannelGroup channels = new DefaultChannelGroup( GlobalEventExecutor.INSTANCE);
-
 
 
     //客户端与服务端创建连接的时候调用
@@ -88,7 +86,7 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
             ByteBuf buf = frame.content();
             for (int i = 0; i < buf.capacity(); i++){
                 byte b = buf.getByte(i);
-                System.out.println("byte:"+b);
+                logger.info("byte:"+b);
             }
             return;
         }
@@ -98,7 +96,7 @@ public class WebSocketHandler extends SimpleChannelInboundHandler<Object> {
         logger.info ("服务端收到客户端的消息====>>>" + reqMsg);
         ClientMsg clientMsg = (ClientMsg) JSONObject.toBean ( JSONObject.fromObject ( reqMsg ), ClientMsg.class );
 
-        RedisForMsg redis = new RedisForMsg("localhost",6379,"123456");
+
         //如果是验证信息
         if(clientMsg.getReceiver ().equals ( "server" )){
             if(clientMsg.getMessage ().equals ( "open" )){//如果是连接请求，则将相应ChannelId与用户Id存储起来
